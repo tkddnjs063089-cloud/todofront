@@ -2,22 +2,8 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Todo, TrashItem } from "@/types/todo";
-import {
-  fetchTodos,
-  createTodo,
-  updateTodo,
-  deleteTodoApi,
-  createSubTodo,
-  updateSubTodo,
-  deleteSubTodoApi,
-  fetchTrash,
-  restoreTodoApi,
-  restoreSubTodoApi,
-  permanentDeleteTodoApi,
-  permanentDeleteSubTodoApi,
-  emptyTrashApi,
-} from "@/api";
-import { useDragTodo } from "./todo";
+import { fetchTodos, fetchTrash } from "@/api";
+import { useTodoActions, useSubTodoActions, useTrashActions, useDragTodo } from "./todo";
 
 export function useTodos() {
   // ========== 상태 ==========
@@ -26,342 +12,34 @@ export function useTodos() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ========== 드래그 (로컬) ==========
-  const { handleDragEnd } = useDragTodo(setTodos);
-
   // ========== 초기 데이터 로드 ==========
   useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        const [todosData, trashData] = await Promise.all([fetchTodos(), fetchTrash()]);
+        setTodos(todosData);
+        setTrash(trashData);
+      } catch (error) {
+        console.error("Failed to load data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
     loadData();
   }, []);
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const [todosData, trashData] = await Promise.all([fetchTodos(), fetchTrash()]);
-      setTodos(todosData);
-      setTrash(trashData);
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // ========== 액션 훅들 ==========
+  const { handleDragEnd } = useDragTodo(setTodos);
+  const { addTodo, toggleTodo, editTodo, deleteTodo, setTodoDate } = useTodoActions(todos, setTodos, setTrash, selectedDate);
+  const { addSubTodo, toggleSubTodo, editSubTodo, deleteSubTodo } = useSubTodoActions(todos, setTodos, setTrash);
+  const { restoreFromTrash, deleteFromTrash, emptyTrash } = useTrashActions(trash, setTodos, setTrash);
 
-  // ========== Todo 추가 (Optimistic Update) ==========
-  const addTodo = useCallback(
-    async (text: string) => {
-      // 로컬 시간 기준 날짜 문자열 (UTC 변환 방지)
-      const dateStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}` : null;
-
-      // 1. 임시 ID로 먼저 화면에 표시 (즉시!)
-      const tempId = `temp-${Date.now()}`;
-      const optimisticTodo: Todo = {
-        id: tempId,
-        text,
-        completed: false,
-        date: dateStr,
-        subTodos: [],
-      };
-      setTodos((prev) => [optimisticTodo, ...prev]);
-
-      try {
-        // 2. 백그라운드에서 서버에 저장
-        const newTodo = await createTodo(text, dateStr);
-        // 3. 임시 ID를 실제 ID로 교체
-        setTodos((prev) => prev.map((t) => (t.id === tempId ? newTodo : t)));
-      } catch (error) {
-        // 4. 실패 시 롤백 (화면에서 제거)
-        setTodos((prev) => prev.filter((t) => t.id !== tempId));
-        console.error("Failed to create todo:", error);
-      }
-    },
-    [selectedDate]
-  );
-
-  // ========== SubTodo 추가 (Optimistic Update) ==========
-  const addSubTodo = useCallback(async (todoId: string, text: string) => {
-    const tempId = `temp-${Date.now()}`;
-    const optimisticSubTodo = { id: tempId, text, completed: false };
-
-    // 1. 먼저 화면에 표시
-    setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: [...todo.subTodos, optimisticSubTodo] } : todo)));
-
-    try {
-      // 2. 서버에 저장
-      const newSubTodo = await createSubTodo(todoId, text);
-      // 3. 임시 ID를 실제 ID로 교체
-      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.map((s) => (s.id === tempId ? newSubTodo : s)) } : todo)));
-    } catch (error) {
-      // 4. 실패 시 롤백
-      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.filter((s) => s.id !== tempId) } : todo)));
-      console.error("Failed to create subtodo:", error);
-    }
-  }, []);
-
-  // ========== Todo 토글 (Optimistic Update) ==========
-  const toggleTodo = useCallback(
-    async (todoId: string) => {
-      const todo = todos.find((t) => t.id === todoId);
-      if (!todo) return;
-
-      const newCompleted = !todo.completed;
-      // 1. 먼저 화면에 반영
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, completed: newCompleted } : t)));
-
-      try {
-        // 2. 서버에 저장
-        await updateTodo(todoId, { completed: newCompleted });
-      } catch (error) {
-        // 3. 실패 시 롤백
-        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, completed: !newCompleted } : t)));
-        console.error("Failed to toggle todo:", error);
-      }
-    },
-    [todos]
-  );
-
-  // ========== SubTodo 토글 (Optimistic Update) ==========
-  const toggleSubTodo = useCallback(
-    async (todoId: string, subTodoId: string) => {
-      const todo = todos.find((t) => t.id === todoId);
-      const subTodo = todo?.subTodos.find((s) => s.id === subTodoId);
-      if (!todo || !subTodo) return;
-
-      const newCompleted = !subTodo.completed;
-      // 1. 먼저 화면에 반영 (subTodo + 부모 todo 완료 상태 계산)
-      setTodos((prev) =>
-        prev.map((t) => {
-          if (t.id !== todoId) return t;
-          const updatedSubTodos = t.subTodos.map((s) => (s.id === subTodoId ? { ...s, completed: newCompleted } : s));
-          const allSubTodosCompleted = updatedSubTodos.length > 0 && updatedSubTodos.every((s) => s.completed);
-          return { ...t, subTodos: updatedSubTodos, completed: allSubTodosCompleted };
-        })
-      );
-
-      try {
-        // 2. 서버에 저장
-        await updateSubTodo(todoId, subTodoId, { completed: newCompleted });
-      } catch (error) {
-        // 3. 실패 시 롤백
-        setTodos((prev) =>
-          prev.map((t) => {
-            if (t.id !== todoId) return t;
-            const rolledBackSubTodos = t.subTodos.map((s) => (s.id === subTodoId ? { ...s, completed: !newCompleted } : s));
-            const allSubTodosCompleted = rolledBackSubTodos.length > 0 && rolledBackSubTodos.every((s) => s.completed);
-            return { ...t, subTodos: rolledBackSubTodos, completed: allSubTodosCompleted };
-          })
-        );
-        console.error("Failed to toggle subtodo:", error);
-      }
-    },
-    [todos]
-  );
-
-  // ========== Todo 수정 (Optimistic Update) ==========
-  const editTodo = useCallback(
-    async (todoId: string, newText: string) => {
-      const todo = todos.find((t) => t.id === todoId);
-      if (!todo) return;
-
-      const oldText = todo.text;
-      // 1. 먼저 화면에 반영
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, text: newText } : t)));
-
-      try {
-        // 2. 서버에 저장
-        await updateTodo(todoId, { text: newText });
-      } catch (error) {
-        // 3. 실패 시 롤백
-        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, text: oldText } : t)));
-        console.error("Failed to edit todo:", error);
-      }
-    },
-    [todos]
-  );
-
-  // ========== SubTodo 수정 (Optimistic Update) ==========
-  const editSubTodo = useCallback(
-    async (todoId: string, subTodoId: string, newText: string) => {
-      const todo = todos.find((t) => t.id === todoId);
-      const subTodo = todo?.subTodos.find((s) => s.id === subTodoId);
-      if (!subTodo) return;
-
-      const oldText = subTodo.text;
-      // 1. 먼저 화면에 반영
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: t.subTodos.map((s) => (s.id === subTodoId ? { ...s, text: newText } : s)) } : t)));
-
-      try {
-        // 2. 서버에 저장
-        await updateSubTodo(todoId, subTodoId, { text: newText });
-      } catch (error) {
-        // 3. 실패 시 롤백
-        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: t.subTodos.map((s) => (s.id === subTodoId ? { ...s, text: oldText } : s)) } : t)));
-        console.error("Failed to edit subtodo:", error);
-      }
-    },
-    [todos]
-  );
-
-  // ========== Todo 삭제 (Optimistic Update) ==========
-  const deleteTodo = useCallback(
-    async (todoId: string) => {
-      const deletedTodo = todos.find((t) => t.id === todoId);
-      if (!deletedTodo) return;
-
-      // 1. 먼저 화면에서 제거
-      setTodos((prev) => prev.filter((t) => t.id !== todoId));
-
-      try {
-        // 2. 서버에서 삭제
-        await deleteTodoApi(todoId);
-        // 3. 휴지통 새로고침 (백그라운드)
-        fetchTrash().then(setTrash);
-      } catch (error) {
-        // 4. 실패 시 롤백
-        setTodos((prev) => [deletedTodo, ...prev]);
-        console.error("Failed to delete todo:", error);
-      }
-    },
-    [todos]
-  );
-
-  // ========== SubTodo 삭제 (Optimistic Update) ==========
-  const deleteSubTodo = useCallback(
-    async (todoId: string, subTodoId: string) => {
-      const todo = todos.find((t) => t.id === todoId);
-      const deletedSubTodo = todo?.subTodos.find((s) => s.id === subTodoId);
-      if (!deletedSubTodo) return;
-
-      // 1. 먼저 화면에서 제거
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: t.subTodos.filter((s) => s.id !== subTodoId) } : t)));
-
-      try {
-        // 2. 서버에서 삭제
-        await deleteSubTodoApi(todoId, subTodoId);
-        // 3. 휴지통 새로고침 (백그라운드)
-        fetchTrash().then(setTrash);
-      } catch (error) {
-        // 4. 실패 시 롤백
-        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: [...t.subTodos, deletedSubTodo] } : t)));
-        console.error("Failed to delete subtodo:", error);
-      }
-    },
-    [todos]
-  );
-
-  // ========== 날짜 설정 (Optimistic Update) ==========
-  const setTodoDate = useCallback(
-    async (todoId: string, date: string | null) => {
-      const todo = todos.find((t) => t.id === todoId);
-      if (!todo) return;
-
-      const oldDate = todo.date;
-      // 1. 먼저 화면에 반영
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, date } : t)));
-
-      try {
-        // 2. 서버에 저장
-        await updateTodo(todoId, { date });
-      } catch (error) {
-        // 3. 실패 시 롤백
-        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, date: oldDate } : t)));
-        console.error("Failed to set date:", error);
-      }
-    },
-    [todos]
-  );
-
-  const clearSelectedDate = useCallback(() => {
-    setSelectedDate(null);
-  }, []);
-
-  // ========== 휴지통 - 복원 (Optimistic Update) ==========
-  const restoreFromTrash = useCallback(
-    async (trashItemId: string) => {
-      const item = trash.find((t) => t.id === trashItemId);
-      if (!item) return;
-
-      // 1. 먼저 휴지통에서 제거 & 할 일 목록에 추가
-      setTrash((prev) => prev.filter((t) => t.id !== trashItemId));
-      if (item.type === "todo") {
-        const restoredTodo: Todo = {
-          id: item.id,
-          text: item.text,
-          completed: item.completed,
-          date: item.date || null,
-          subTodos: item.subTodos || [],
-        };
-        setTodos((prev) => [restoredTodo, ...prev]);
-      }
-
-      try {
-        // 2. 서버에서 복원
-        if (item.type === "todo") {
-          await restoreTodoApi(trashItemId);
-        } else {
-          await restoreSubTodoApi(trashItemId);
-        }
-        // 3. subTodo인 경우 전체 새로고침 (부모에 추가해야 함)
-        if (item.type === "subTodo") {
-          const todosData = await fetchTodos();
-          setTodos(todosData);
-        }
-      } catch (error) {
-        // 4. 실패 시 롤백
-        setTrash((prev) => [item, ...prev]);
-        if (item.type === "todo") {
-          setTodos((prev) => prev.filter((t) => t.id !== item.id));
-        }
-        console.error("Failed to restore:", error);
-      }
-    },
-    [trash]
-  );
-
-  // ========== 휴지통 - 영구 삭제 (Optimistic Update) ==========
-  const deleteFromTrash = useCallback(
-    async (trashItemId: string) => {
-      const item = trash.find((t) => t.id === trashItemId);
-      if (!item) return;
-
-      // 1. 먼저 화면에서 제거
-      setTrash((prev) => prev.filter((t) => t.id !== trashItemId));
-
-      try {
-        // 2. 서버에서 영구 삭제
-        if (item.type === "todo") {
-          await permanentDeleteTodoApi(trashItemId);
-        } else {
-          await permanentDeleteSubTodoApi(trashItemId);
-        }
-      } catch (error) {
-        // 3. 실패 시 롤백
-        setTrash((prev) => [item, ...prev]);
-        console.error("Failed to delete permanently:", error);
-      }
-    },
-    [trash]
-  );
-
-  // ========== 휴지통 비우기 (Optimistic Update) ==========
-  const emptyTrash = useCallback(async () => {
-    const oldTrash = [...trash];
-
-    // 1. 먼저 화면에서 비우기
-    setTrash([]);
-
-    try {
-      // 2. 서버에서 비우기
-      await emptyTrashApi();
-    } catch (error) {
-      // 3. 실패 시 롤백
-      setTrash(oldTrash);
-      console.error("Failed to empty trash:", error);
-    }
-  }, [trash]);
+  // ========== 기타 액션 ==========
+  const clearSelectedDate = useCallback(() => setSelectedDate(null), []);
 
   // ========== 계산된 값 ==========
-  const completedCount = useMemo(() => todos.filter((todo) => todo.completed).length, [todos]);
+  const completedCount = useMemo(() => todos.filter((t) => t.completed).length, [todos]);
 
   // ========== 컴포넌트별 Props ==========
   const todoPanelProps = useMemo(
@@ -370,6 +48,7 @@ export function useTodos() {
       selectedDate,
       completedCount,
       isLoading,
+      trash,
       onAdd: addTodo,
       onDragEnd: handleDragEnd,
       onAddSubTodo: addSubTodo,
@@ -381,7 +60,6 @@ export function useTodos() {
       onClearSelectedDate: clearSelectedDate,
       onEditTodo: editTodo,
       onEditSubTodo: editSubTodo,
-      trash,
       onRestoreFromTrash: restoreFromTrash,
       onDeleteFromTrash: deleteFromTrash,
       onEmptyTrash: emptyTrash,
@@ -391,6 +69,7 @@ export function useTodos() {
       selectedDate,
       completedCount,
       isLoading,
+      trash,
       addTodo,
       handleDragEnd,
       addSubTodo,
@@ -402,24 +81,13 @@ export function useTodos() {
       clearSelectedDate,
       editTodo,
       editSubTodo,
-      trash,
       restoreFromTrash,
       deleteFromTrash,
       emptyTrash,
     ]
   );
 
-  const weekViewProps = useMemo(
-    () => ({
-      todos,
-      selectedDate,
-      onSelectDate: setSelectedDate,
-    }),
-    [todos, selectedDate]
-  );
+  const weekViewProps = useMemo(() => ({ todos, selectedDate, onSelectDate: setSelectedDate }), [todos, selectedDate]);
 
-  return {
-    todoPanelProps,
-    weekViewProps,
-  };
+  return { todoPanelProps, weekViewProps };
 }

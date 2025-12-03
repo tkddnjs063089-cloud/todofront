@@ -1,8 +1,4 @@
-export { useAddTodo } from "./useAddTodo";
-export { useDeleteTodo } from "./useDeleteTodo";
-export { useToggleTodo } from "./useToggleTodo";
-export { useDateTodo } from "./useDateTodo";
+export { useTodoActions } from "./useTodoActions";
+export { useSubTodoActions } from "./useSubTodoActions";
+export { useTrashActions } from "./useTrashActions";
 export { useDragTodo } from "./useDragTodo";
-export { useEditTodo } from "./useEditTodo";
-export { useTrash } from "./useTrash";
-
