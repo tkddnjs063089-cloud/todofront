@@ -1,7 +1,7 @@
 import { Todo, SubTodo, TrashItem } from "@/types/todo";
 
-// 백엔드 API 주소 (백엔드 서버가 4000번 포트에서 실행됨)
-const API_URL = "http://localhost:4000/api";
+// 백엔드 API 주소 (백엔드 서버가 3001번 포트에서 실행됨)
+const API_URL = "http://localhost:3001/api";
 
 // ==================== 메인 Todo ====================
 
