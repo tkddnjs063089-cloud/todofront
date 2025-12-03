@@ -21,8 +21,7 @@ export default function ThemeToggle() {
       className="p-2 rounded-full bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 transition-colors"
       aria-label="테마 변경"
     >
-      {theme === "dark" ? <Moon className="w-5 h-5 text-slate-700" /> : <Sun className="w-5 h-5 text-yellow-500" />}
+      {theme === "dark" ? <Moon className="w-5 h-5 text-slate-300" /> : <Sun className="w-5 h-5 text-yellow-500" />}
     </button>
   );
 }
-

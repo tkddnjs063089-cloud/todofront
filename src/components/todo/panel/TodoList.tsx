@@ -2,7 +2,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Mountain } from "lucide-react";
 import { Todo } from "@/types/todo";
-import TodoItem from "./TodoItem";
+import { TodoItem } from "../item";
 
 type TodoListProps = {
   todos: Todo[];
@@ -13,30 +13,21 @@ type TodoListProps = {
   onToggleTodo: (todoId: string) => void;
   onToggleSubTodo: (todoId: string, subTodoId: string) => void;
   onSetDate: (todoId: string, date: string | null) => void;
+  onEditTodo?: (todoId: string, newText: string) => void;
+  onEditSubTodo?: (todoId: string, subTodoId: string, newText: string) => void;
 };
 
-export default function TodoList({
-  todos,
-  onDragEnd,
-  onAddSubTodo,
-  onDeleteTodo,
-  onDeleteSubTodo,
-  onToggleTodo,
-  onToggleSubTodo,
-  onSetDate,
-}: TodoListProps) {
+export default function TodoList({ todos, onDragEnd, onAddSubTodo, onDeleteTodo, onDeleteSubTodo, onToggleTodo, onToggleSubTodo, onSetDate, onEditTodo, onEditSubTodo }: TodoListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   if (todos.length === 0) {
     return (
       <div className="text-center py-8">
         <Mountain className="w-16 h-16 text-stone-300 dark:text-stone-600 mx-auto mb-3" />
-        <p className="text-stone-500 dark:text-stone-500">아직 할 일이 없습니다</p>
+        <p className="text-stone-500">아직 할 일이 없습니다</p>
         <p className="text-stone-400 dark:text-stone-600 text-sm mt-1">첫 번째 할 일을 추가해보세요!</p>
       </div>
     );
@@ -47,17 +38,8 @@ export default function TodoList({
       <SortableContext items={todos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <ul className="space-y-3">
           {todos.map((todo, index) => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              index={index}
-              onAddSubTodo={onAddSubTodo}
-              onDeleteTodo={onDeleteTodo}
-              onDeleteSubTodo={onDeleteSubTodo}
-              onToggleTodo={onToggleTodo}
-              onToggleSubTodo={onToggleSubTodo}
-              onSetDate={onSetDate}
-            />
+            <TodoItem key={todo.id} todo={todo} index={index} onAddSubTodo={onAddSubTodo} onDeleteTodo={onDeleteTodo} onDeleteSubTodo={onDeleteSubTodo}
+              onToggleTodo={onToggleTodo} onToggleSubTodo={onToggleSubTodo} onSetDate={onSetDate} onEditTodo={onEditTodo} onEditSubTodo={onEditSubTodo} />
           ))}
         </ul>
       </SortableContext>
