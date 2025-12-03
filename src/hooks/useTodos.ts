@@ -275,54 +275,90 @@ export function useTodos() {
     setSelectedDate(null);
   }, []);
 
-  // ========== 휴지통 - 복원 ==========
+  // ========== 휴지통 - 복원 (Optimistic Update) ==========
   const restoreFromTrash = useCallback(
     async (trashItemId: string) => {
       const item = trash.find((t) => t.id === trashItemId);
       if (!item) return;
+
+      // 1. 먼저 휴지통에서 제거 & 할 일 목록에 추가
+      setTrash((prev) => prev.filter((t) => t.id !== trashItemId));
+      if (item.type === "todo") {
+        const restoredTodo: Todo = {
+          id: item.id,
+          text: item.text,
+          completed: item.completed,
+          date: item.date || null,
+          subTodos: item.subTodos || [],
+        };
+        setTodos((prev) => [restoredTodo, ...prev]);
+      }
+
       try {
+        // 2. 서버에서 복원
         if (item.type === "todo") {
           await restoreTodoApi(trashItemId);
         } else {
           await restoreSubTodoApi(trashItemId);
         }
-        // 데이터 새로고침
-        await loadData();
+        // 3. subTodo인 경우 전체 새로고침 (부모에 추가해야 함)
+        if (item.type === "subTodo") {
+          const todosData = await fetchTodos();
+          setTodos(todosData);
+        }
       } catch (error) {
+        // 4. 실패 시 롤백
+        setTrash((prev) => [item, ...prev]);
+        if (item.type === "todo") {
+          setTodos((prev) => prev.filter((t) => t.id !== item.id));
+        }
         console.error("Failed to restore:", error);
       }
     },
     [trash]
   );
 
-  // ========== 휴지통 - 영구 삭제 ==========
+  // ========== 휴지통 - 영구 삭제 (Optimistic Update) ==========
   const deleteFromTrash = useCallback(
     async (trashItemId: string) => {
       const item = trash.find((t) => t.id === trashItemId);
       if (!item) return;
+
+      // 1. 먼저 화면에서 제거
+      setTrash((prev) => prev.filter((t) => t.id !== trashItemId));
+
       try {
+        // 2. 서버에서 영구 삭제
         if (item.type === "todo") {
           await permanentDeleteTodoApi(trashItemId);
         } else {
           await permanentDeleteSubTodoApi(trashItemId);
         }
-        setTrash((prev) => prev.filter((t) => t.id !== trashItemId));
       } catch (error) {
+        // 3. 실패 시 롤백
+        setTrash((prev) => [item, ...prev]);
         console.error("Failed to delete permanently:", error);
       }
     },
     [trash]
   );
 
-  // ========== 휴지통 비우기 ==========
+  // ========== 휴지통 비우기 (Optimistic Update) ==========
   const emptyTrash = useCallback(async () => {
+    const oldTrash = [...trash];
+
+    // 1. 먼저 화면에서 비우기
+    setTrash([]);
+
     try {
+      // 2. 서버에서 비우기
       await emptyTrashApi();
-      setTrash([]);
     } catch (error) {
+      // 3. 실패 시 롤백
+      setTrash(oldTrash);
       console.error("Failed to empty trash:", error);
     }
-  }, []);
+  }, [trash]);
 
   // ========== 계산된 값 ==========
   const completedCount = useMemo(() => todos.filter((todo) => todo.completed).length, [todos]);
