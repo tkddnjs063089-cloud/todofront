@@ -1,7 +1,7 @@
 import { Todo, SubTodo, TrashItem } from "@/types/todo";
 
 // 백엔드 API 주소 (환경변수 또는 기본값)
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://todobackend-il7a.onrender.com/api";
 
 // ==================== 메인 Todo ====================
 
