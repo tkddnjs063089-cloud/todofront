@@ -2,11 +2,20 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Todo, TrashItem } from "@/types/todo";
-import { 
-  fetchTodos, createTodo, updateTodo, deleteTodoApi, 
-  createSubTodo, updateSubTodo, deleteSubTodoApi,
-  fetchTrash, restoreTodoApi, restoreSubTodoApi, 
-  permanentDeleteTodoApi, permanentDeleteSubTodoApi, emptyTrashApi 
+import {
+  fetchTodos,
+  createTodo,
+  updateTodo,
+  deleteTodoApi,
+  createSubTodo,
+  updateSubTodo,
+  deleteSubTodoApi,
+  fetchTrash,
+  restoreTodoApi,
+  restoreSubTodoApi,
+  permanentDeleteTodoApi,
+  permanentDeleteSubTodoApi,
+  emptyTrashApi,
 } from "@/api";
 import { useDragTodo } from "./todo";
 
@@ -39,56 +48,62 @@ export function useTodos() {
   };
 
   // ========== Todo 추가 ==========
-  const addTodo = useCallback(async (text: string) => {
-    try {
-      const dateStr = selectedDate ? selectedDate.toISOString().split("T")[0] : null;
-      const newTodo = await createTodo(text, dateStr);
-      setTodos((prev) => [newTodo, ...prev]);
-    } catch (error) {
-      console.error("Failed to create todo:", error);
-    }
-  }, [selectedDate]);
+  const addTodo = useCallback(
+    async (text: string) => {
+      try {
+        // 로컬 시간 기준 날짜 문자열 (UTC 변환 방지)
+        const dateStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}` : null;
+        const newTodo = await createTodo(text, dateStr);
+        setTodos((prev) => [newTodo, ...prev]);
+      } catch (error) {
+        console.error("Failed to create todo:", error);
+      }
+    },
+    [selectedDate]
+  );
 
   // ========== SubTodo 추가 ==========
   const addSubTodo = useCallback(async (todoId: string, text: string) => {
     try {
       const newSubTodo = await createSubTodo(todoId, text);
-      setTodos((prev) =>
-        prev.map((todo) =>
-          todo.id === todoId ? { ...todo, subTodos: [...todo.subTodos, newSubTodo] } : todo
-        )
-      );
+      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: [...todo.subTodos, newSubTodo] } : todo)));
     } catch (error) {
       console.error("Failed to create subtodo:", error);
     }
   }, []);
 
   // ========== Todo 토글 ==========
-  const toggleTodo = useCallback(async (todoId: string) => {
-    const todo = todos.find((t) => t.id === todoId);
-    if (!todo) return;
-    try {
-      const updated = await updateTodo(todoId, { completed: !todo.completed });
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? updated : t)));
-    } catch (error) {
-      console.error("Failed to toggle todo:", error);
-    }
-  }, [todos]);
+  const toggleTodo = useCallback(
+    async (todoId: string) => {
+      const todo = todos.find((t) => t.id === todoId);
+      if (!todo) return;
+      try {
+        const updated = await updateTodo(todoId, { completed: !todo.completed });
+        setTodos((prev) => prev.map((t) => (t.id === todoId ? updated : t)));
+      } catch (error) {
+        console.error("Failed to toggle todo:", error);
+      }
+    },
+    [todos]
+  );
 
   // ========== SubTodo 토글 ==========
-  const toggleSubTodo = useCallback(async (todoId: string, subTodoId: string) => {
-    const todo = todos.find((t) => t.id === todoId);
-    const subTodo = todo?.subTodos.find((s) => s.id === subTodoId);
-    if (!subTodo) return;
-    try {
-      await updateSubTodo(todoId, subTodoId, { completed: !subTodo.completed });
-      // 서버에서 부모 Todo도 업데이트하므로 전체 다시 로드
-      const todosData = await fetchTodos();
-      setTodos(todosData);
-    } catch (error) {
-      console.error("Failed to toggle subtodo:", error);
-    }
-  }, [todos]);
+  const toggleSubTodo = useCallback(
+    async (todoId: string, subTodoId: string) => {
+      const todo = todos.find((t) => t.id === todoId);
+      const subTodo = todo?.subTodos.find((s) => s.id === subTodoId);
+      if (!subTodo) return;
+      try {
+        await updateSubTodo(todoId, subTodoId, { completed: !subTodo.completed });
+        // 서버에서 부모 Todo도 업데이트하므로 전체 다시 로드
+        const todosData = await fetchTodos();
+        setTodos(todosData);
+      } catch (error) {
+        console.error("Failed to toggle subtodo:", error);
+      }
+    },
+    [todos]
+  );
 
   // ========== Todo 수정 ==========
   const editTodo = useCallback(async (todoId: string, newText: string) => {
@@ -104,13 +119,7 @@ export function useTodos() {
   const editSubTodo = useCallback(async (todoId: string, subTodoId: string, newText: string) => {
     try {
       const updated = await updateSubTodo(todoId, subTodoId, { text: newText });
-      setTodos((prev) =>
-        prev.map((todo) =>
-          todo.id === todoId
-            ? { ...todo, subTodos: todo.subTodos.map((s) => (s.id === subTodoId ? updated : s)) }
-            : todo
-        )
-      );
+      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.map((s) => (s.id === subTodoId ? updated : s)) } : todo)));
     } catch (error) {
       console.error("Failed to edit subtodo:", error);
     }
@@ -133,13 +142,7 @@ export function useTodos() {
   const deleteSubTodo = useCallback(async (todoId: string, subTodoId: string) => {
     try {
       await deleteSubTodoApi(todoId, subTodoId);
-      setTodos((prev) =>
-        prev.map((todo) =>
-          todo.id === todoId
-            ? { ...todo, subTodos: todo.subTodos.filter((s) => s.id !== subTodoId) }
-            : todo
-        )
-      );
+      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.filter((s) => s.id !== subTodoId) } : todo)));
       const trashData = await fetchTrash();
       setTrash(trashData);
     } catch (error) {
@@ -162,37 +165,43 @@ export function useTodos() {
   }, []);
 
   // ========== 휴지통 - 복원 ==========
-  const restoreFromTrash = useCallback(async (trashItemId: string) => {
-    const item = trash.find((t) => t.id === trashItemId);
-    if (!item) return;
-    try {
-      if (item.type === "todo") {
-        await restoreTodoApi(trashItemId);
-      } else {
-        await restoreSubTodoApi(trashItemId);
+  const restoreFromTrash = useCallback(
+    async (trashItemId: string) => {
+      const item = trash.find((t) => t.id === trashItemId);
+      if (!item) return;
+      try {
+        if (item.type === "todo") {
+          await restoreTodoApi(trashItemId);
+        } else {
+          await restoreSubTodoApi(trashItemId);
+        }
+        // 데이터 새로고침
+        await loadData();
+      } catch (error) {
+        console.error("Failed to restore:", error);
       }
-      // 데이터 새로고침
-      await loadData();
-    } catch (error) {
-      console.error("Failed to restore:", error);
-    }
-  }, [trash]);
+    },
+    [trash]
+  );
 
   // ========== 휴지통 - 영구 삭제 ==========
-  const deleteFromTrash = useCallback(async (trashItemId: string) => {
-    const item = trash.find((t) => t.id === trashItemId);
-    if (!item) return;
-    try {
-      if (item.type === "todo") {
-        await permanentDeleteTodoApi(trashItemId);
-      } else {
-        await permanentDeleteSubTodoApi(trashItemId);
+  const deleteFromTrash = useCallback(
+    async (trashItemId: string) => {
+      const item = trash.find((t) => t.id === trashItemId);
+      if (!item) return;
+      try {
+        if (item.type === "todo") {
+          await permanentDeleteTodoApi(trashItemId);
+        } else {
+          await permanentDeleteSubTodoApi(trashItemId);
+        }
+        setTrash((prev) => prev.filter((t) => t.id !== trashItemId));
+      } catch (error) {
+        console.error("Failed to delete permanently:", error);
       }
-      setTrash((prev) => prev.filter((t) => t.id !== trashItemId));
-    } catch (error) {
-      console.error("Failed to delete permanently:", error);
-    }
-  }, [trash]);
+    },
+    [trash]
+  );
 
   // ========== 휴지통 비우기 ==========
   const emptyTrash = useCallback(async () => {
@@ -208,33 +217,59 @@ export function useTodos() {
   const completedCount = useMemo(() => todos.filter((todo) => todo.completed).length, [todos]);
 
   // ========== 컴포넌트별 Props ==========
-  const todoPanelProps = useMemo(() => ({
-    todos,
-    selectedDate,
-    completedCount,
-    isLoading,
-    onAdd: addTodo,
-    onDragEnd: handleDragEnd,
-    onAddSubTodo: addSubTodo,
-    onDeleteTodo: deleteTodo,
-    onDeleteSubTodo: deleteSubTodo,
-    onToggleTodo: toggleTodo,
-    onToggleSubTodo: toggleSubTodo,
-    onSetDate: setTodoDate,
-    onClearSelectedDate: clearSelectedDate,
-    onEditTodo: editTodo,
-    onEditSubTodo: editSubTodo,
-    trash,
-    onRestoreFromTrash: restoreFromTrash,
-    onDeleteFromTrash: deleteFromTrash,
-    onEmptyTrash: emptyTrash,
-  }), [todos, selectedDate, completedCount, isLoading, addTodo, handleDragEnd, addSubTodo, deleteTodo, deleteSubTodo, toggleTodo, toggleSubTodo, setTodoDate, clearSelectedDate, editTodo, editSubTodo, trash, restoreFromTrash, deleteFromTrash, emptyTrash]);
+  const todoPanelProps = useMemo(
+    () => ({
+      todos,
+      selectedDate,
+      completedCount,
+      isLoading,
+      onAdd: addTodo,
+      onDragEnd: handleDragEnd,
+      onAddSubTodo: addSubTodo,
+      onDeleteTodo: deleteTodo,
+      onDeleteSubTodo: deleteSubTodo,
+      onToggleTodo: toggleTodo,
+      onToggleSubTodo: toggleSubTodo,
+      onSetDate: setTodoDate,
+      onClearSelectedDate: clearSelectedDate,
+      onEditTodo: editTodo,
+      onEditSubTodo: editSubTodo,
+      trash,
+      onRestoreFromTrash: restoreFromTrash,
+      onDeleteFromTrash: deleteFromTrash,
+      onEmptyTrash: emptyTrash,
+    }),
+    [
+      todos,
+      selectedDate,
+      completedCount,
+      isLoading,
+      addTodo,
+      handleDragEnd,
+      addSubTodo,
+      deleteTodo,
+      deleteSubTodo,
+      toggleTodo,
+      toggleSubTodo,
+      setTodoDate,
+      clearSelectedDate,
+      editTodo,
+      editSubTodo,
+      trash,
+      restoreFromTrash,
+      deleteFromTrash,
+      emptyTrash,
+    ]
+  );
 
-  const weekViewProps = useMemo(() => ({
-    todos,
-    selectedDate,
-    onSelectDate: setSelectedDate,
-  }), [todos, selectedDate]);
+  const weekViewProps = useMemo(
+    () => ({
+      todos,
+      selectedDate,
+      onSelectDate: setSelectedDate,
+    }),
+    [todos, selectedDate]
+  );
 
   return {
     todoPanelProps,
