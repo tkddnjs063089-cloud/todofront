@@ -38,3 +38,4 @@ export default function TodoInput({ onAdd, placeholder = "할 일을 입력하�
     </div>
   );
 }
+

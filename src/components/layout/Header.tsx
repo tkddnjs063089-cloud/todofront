@@ -1,9 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Mountain, Flag, Sparkles, Stars } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
-import ThemeToggle from "./ThemeToggle";
+import { format } from "date-fns";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 
 export default function Header() {
   const { theme } = useTheme();
@@ -12,25 +13,14 @@ export default function Header() {
 
   useEffect(() => {
     setMounted(true);
-
-    // 현재 시간 업데이트
-    const updateTime = () => {
-      const now = new Date();
-      const hours = String(now.getHours()).padStart(2, "0");
-      const minutes = String(now.getMinutes()).padStart(2, "0");
-      const seconds = String(now.getSeconds()).padStart(2, "0");
-      setCurrentTime(`${hours}:${minutes}:${seconds}`);
-    };
-
-    updateTime(); // 초기 시간 설정
-    const interval = setInterval(updateTime, 1000); // 1초마다 업데이트
-
-    return () => clearInterval(interval); // 클린업
+    const timer = setInterval(() => {
+      setCurrentTime(format(new Date(), "HH:mm:ss"));
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   return (
     <div className="text-center mb-8">
-      {/* 테마 토글 - 우측 상단 */}
       <div className="flex justify-end mb-4">
         <ThemeToggle />
       </div>
@@ -44,9 +34,9 @@ export default function Header() {
           오늘 할 일을 정리하세요
           {mounted && (theme === "dark" ? <Stars className="w-4 h-4 text-yellow-400" /> : <Sparkles className="w-4 h-4 text-amber-500" />)}
         </p>
-        {/* 현재 시간 */}
         {mounted && <p className="text-2xl font-mono font-bold text-orange-500 dark:text-orange-400 mt-2 tracking-wider">{currentTime}</p>}
       </div>
     </div>
   );
 }
+
