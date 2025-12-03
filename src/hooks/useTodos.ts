@@ -47,15 +47,31 @@ export function useTodos() {
     }
   };
 
-  // ========== Todo 추가 ==========
+  // ========== Todo 추가 (Optimistic Update) ==========
   const addTodo = useCallback(
     async (text: string) => {
+      // 로컬 시간 기준 날짜 문자열 (UTC 변환 방지)
+      const dateStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}` : null;
+
+      // 1. 임시 ID로 먼저 화면에 표시 (즉시!)
+      const tempId = `temp-${Date.now()}`;
+      const optimisticTodo: Todo = {
+        id: tempId,
+        text,
+        completed: false,
+        date: dateStr,
+        subTodos: [],
+      };
+      setTodos((prev) => [optimisticTodo, ...prev]);
+
       try {
-        // 로컬 시간 기준 날짜 문자열 (UTC 변환 방지)
-        const dateStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}` : null;
+        // 2. 백그라운드에서 서버에 저장
         const newTodo = await createTodo(text, dateStr);
-        setTodos((prev) => [newTodo, ...prev]);
+        // 3. 임시 ID를 실제 ID로 교체
+        setTodos((prev) => prev.map((t) => (t.id === tempId ? newTodo : t)));
       } catch (error) {
+        // 4. 실패 시 롤백 (화면에서 제거)
+        setTodos((prev) => prev.filter((t) => t.id !== tempId));
         console.error("Failed to create todo:", error);
       }
     },
