@@ -78,103 +78,198 @@ export function useTodos() {
     [selectedDate]
   );
 
-  // ========== SubTodo 추가 ==========
+  // ========== SubTodo 추가 (Optimistic Update) ==========
   const addSubTodo = useCallback(async (todoId: string, text: string) => {
+    const tempId = `temp-${Date.now()}`;
+    const optimisticSubTodo = { id: tempId, text, completed: false };
+
+    // 1. 먼저 화면에 표시
+    setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: [...todo.subTodos, optimisticSubTodo] } : todo)));
+
     try {
+      // 2. 서버에 저장
       const newSubTodo = await createSubTodo(todoId, text);
-      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: [...todo.subTodos, newSubTodo] } : todo)));
+      // 3. 임시 ID를 실제 ID로 교체
+      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.map((s) => (s.id === tempId ? newSubTodo : s)) } : todo)));
     } catch (error) {
+      // 4. 실패 시 롤백
+      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.filter((s) => s.id !== tempId) } : todo)));
       console.error("Failed to create subtodo:", error);
     }
   }, []);
 
-  // ========== Todo 토글 ==========
+  // ========== Todo 토글 (Optimistic Update) ==========
   const toggleTodo = useCallback(
     async (todoId: string) => {
       const todo = todos.find((t) => t.id === todoId);
       if (!todo) return;
+
+      const newCompleted = !todo.completed;
+      // 1. 먼저 화면에 반영
+      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, completed: newCompleted } : t)));
+
       try {
-        const updated = await updateTodo(todoId, { completed: !todo.completed });
-        setTodos((prev) => prev.map((t) => (t.id === todoId ? updated : t)));
+        // 2. 서버에 저장
+        await updateTodo(todoId, { completed: newCompleted });
       } catch (error) {
+        // 3. 실패 시 롤백
+        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, completed: !newCompleted } : t)));
         console.error("Failed to toggle todo:", error);
       }
     },
     [todos]
   );
 
-  // ========== SubTodo 토글 ==========
+  // ========== SubTodo 토글 (Optimistic Update) ==========
   const toggleSubTodo = useCallback(
     async (todoId: string, subTodoId: string) => {
       const todo = todos.find((t) => t.id === todoId);
       const subTodo = todo?.subTodos.find((s) => s.id === subTodoId);
-      if (!subTodo) return;
+      if (!todo || !subTodo) return;
+
+      const newCompleted = !subTodo.completed;
+      // 1. 먼저 화면에 반영 (subTodo + 부모 todo 완료 상태 계산)
+      setTodos((prev) =>
+        prev.map((t) => {
+          if (t.id !== todoId) return t;
+          const updatedSubTodos = t.subTodos.map((s) => (s.id === subTodoId ? { ...s, completed: newCompleted } : s));
+          const allSubTodosCompleted = updatedSubTodos.length > 0 && updatedSubTodos.every((s) => s.completed);
+          return { ...t, subTodos: updatedSubTodos, completed: allSubTodosCompleted };
+        })
+      );
+
       try {
-        await updateSubTodo(todoId, subTodoId, { completed: !subTodo.completed });
-        // 서버에서 부모 Todo도 업데이트하므로 전체 다시 로드
-        const todosData = await fetchTodos();
-        setTodos(todosData);
+        // 2. 서버에 저장
+        await updateSubTodo(todoId, subTodoId, { completed: newCompleted });
       } catch (error) {
+        // 3. 실패 시 롤백
+        setTodos((prev) =>
+          prev.map((t) => {
+            if (t.id !== todoId) return t;
+            const rolledBackSubTodos = t.subTodos.map((s) => (s.id === subTodoId ? { ...s, completed: !newCompleted } : s));
+            const allSubTodosCompleted = rolledBackSubTodos.length > 0 && rolledBackSubTodos.every((s) => s.completed);
+            return { ...t, subTodos: rolledBackSubTodos, completed: allSubTodosCompleted };
+          })
+        );
         console.error("Failed to toggle subtodo:", error);
       }
     },
     [todos]
   );
 
-  // ========== Todo 수정 ==========
-  const editTodo = useCallback(async (todoId: string, newText: string) => {
-    try {
-      const updated = await updateTodo(todoId, { text: newText });
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? updated : t)));
-    } catch (error) {
-      console.error("Failed to edit todo:", error);
-    }
-  }, []);
+  // ========== Todo 수정 (Optimistic Update) ==========
+  const editTodo = useCallback(
+    async (todoId: string, newText: string) => {
+      const todo = todos.find((t) => t.id === todoId);
+      if (!todo) return;
 
-  // ========== SubTodo 수정 ==========
-  const editSubTodo = useCallback(async (todoId: string, subTodoId: string, newText: string) => {
-    try {
-      const updated = await updateSubTodo(todoId, subTodoId, { text: newText });
-      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.map((s) => (s.id === subTodoId ? updated : s)) } : todo)));
-    } catch (error) {
-      console.error("Failed to edit subtodo:", error);
-    }
-  }, []);
+      const oldText = todo.text;
+      // 1. 먼저 화면에 반영
+      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, text: newText } : t)));
 
-  // ========== Todo 삭제 (휴지통으로) ==========
-  const deleteTodo = useCallback(async (todoId: string) => {
-    try {
-      await deleteTodoApi(todoId);
-      // 로컬 상태 업데이트 & 휴지통 새로고침
+      try {
+        // 2. 서버에 저장
+        await updateTodo(todoId, { text: newText });
+      } catch (error) {
+        // 3. 실패 시 롤백
+        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, text: oldText } : t)));
+        console.error("Failed to edit todo:", error);
+      }
+    },
+    [todos]
+  );
+
+  // ========== SubTodo 수정 (Optimistic Update) ==========
+  const editSubTodo = useCallback(
+    async (todoId: string, subTodoId: string, newText: string) => {
+      const todo = todos.find((t) => t.id === todoId);
+      const subTodo = todo?.subTodos.find((s) => s.id === subTodoId);
+      if (!subTodo) return;
+
+      const oldText = subTodo.text;
+      // 1. 먼저 화면에 반영
+      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: t.subTodos.map((s) => (s.id === subTodoId ? { ...s, text: newText } : s)) } : t)));
+
+      try {
+        // 2. 서버에 저장
+        await updateSubTodo(todoId, subTodoId, { text: newText });
+      } catch (error) {
+        // 3. 실패 시 롤백
+        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: t.subTodos.map((s) => (s.id === subTodoId ? { ...s, text: oldText } : s)) } : t)));
+        console.error("Failed to edit subtodo:", error);
+      }
+    },
+    [todos]
+  );
+
+  // ========== Todo 삭제 (Optimistic Update) ==========
+  const deleteTodo = useCallback(
+    async (todoId: string) => {
+      const deletedTodo = todos.find((t) => t.id === todoId);
+      if (!deletedTodo) return;
+
+      // 1. 먼저 화면에서 제거
       setTodos((prev) => prev.filter((t) => t.id !== todoId));
-      const trashData = await fetchTrash();
-      setTrash(trashData);
-    } catch (error) {
-      console.error("Failed to delete todo:", error);
-    }
-  }, []);
 
-  // ========== SubTodo 삭제 (휴지통으로) ==========
-  const deleteSubTodo = useCallback(async (todoId: string, subTodoId: string) => {
-    try {
-      await deleteSubTodoApi(todoId, subTodoId);
-      setTodos((prev) => prev.map((todo) => (todo.id === todoId ? { ...todo, subTodos: todo.subTodos.filter((s) => s.id !== subTodoId) } : todo)));
-      const trashData = await fetchTrash();
-      setTrash(trashData);
-    } catch (error) {
-      console.error("Failed to delete subtodo:", error);
-    }
-  }, []);
+      try {
+        // 2. 서버에서 삭제
+        await deleteTodoApi(todoId);
+        // 3. 휴지통 새로고침 (백그라운드)
+        fetchTrash().then(setTrash);
+      } catch (error) {
+        // 4. 실패 시 롤백
+        setTodos((prev) => [deletedTodo, ...prev]);
+        console.error("Failed to delete todo:", error);
+      }
+    },
+    [todos]
+  );
 
-  // ========== 날짜 설정 ==========
-  const setTodoDate = useCallback(async (todoId: string, date: string | null) => {
-    try {
-      const updated = await updateTodo(todoId, { date });
-      setTodos((prev) => prev.map((t) => (t.id === todoId ? updated : t)));
-    } catch (error) {
-      console.error("Failed to set date:", error);
-    }
-  }, []);
+  // ========== SubTodo 삭제 (Optimistic Update) ==========
+  const deleteSubTodo = useCallback(
+    async (todoId: string, subTodoId: string) => {
+      const todo = todos.find((t) => t.id === todoId);
+      const deletedSubTodo = todo?.subTodos.find((s) => s.id === subTodoId);
+      if (!deletedSubTodo) return;
+
+      // 1. 먼저 화면에서 제거
+      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: t.subTodos.filter((s) => s.id !== subTodoId) } : t)));
+
+      try {
+        // 2. 서버에서 삭제
+        await deleteSubTodoApi(todoId, subTodoId);
+        // 3. 휴지통 새로고침 (백그라운드)
+        fetchTrash().then(setTrash);
+      } catch (error) {
+        // 4. 실패 시 롤백
+        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, subTodos: [...t.subTodos, deletedSubTodo] } : t)));
+        console.error("Failed to delete subtodo:", error);
+      }
+    },
+    [todos]
+  );
+
+  // ========== 날짜 설정 (Optimistic Update) ==========
+  const setTodoDate = useCallback(
+    async (todoId: string, date: string | null) => {
+      const todo = todos.find((t) => t.id === todoId);
+      if (!todo) return;
+
+      const oldDate = todo.date;
+      // 1. 먼저 화면에 반영
+      setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, date } : t)));
+
+      try {
+        // 2. 서버에 저장
+        await updateTodo(todoId, { date });
+      } catch (error) {
+        // 3. 실패 시 롤백
+        setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, date: oldDate } : t)));
+        console.error("Failed to set date:", error);
+      }
+    },
+    [todos]
+  );
 
   const clearSelectedDate = useCallback(() => {
     setSelectedDate(null);
